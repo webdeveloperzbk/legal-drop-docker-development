@@ -10,6 +10,7 @@ Server checkout: `/var/www/legal_drop`. Run deployment as `legaldrop` (UID/GID 2
 4. Run `sudo bash ssl_generator.sh` to check/issue certificates and prepare SSL, logs and ACME directories. Existing valid certificates are preserved.
 5. Configure application CI secrets in the GitHub environment `development_server`: `ENV_DECRYPT_KEY`, `SSH_KEY`, `SSH_KNOWN_HOSTS`, `SSH_SERVER`, `SSH_USER`, `DEPLOY_SCRIPT`; optional `SSH_PORT` defaults to 22. Set `DEPLOY_SCRIPT=/var/www/legal_drop/deploy-development.sh`.
 6. Publish an application pre-release with a new, explicit tag. CI builds/publishes the application image and calls `bash deploy-development.sh <tag>` over SSH.
+7. Create the owner using `admin-owner.sh`, then import countries, cities, currencies, transport types and block reasons through the administrative reference loader. Deployment runs migrations only: it does not run seeders or import reference data. Development fixtures are separate, optional commands requiring reference data (and, for some scenarios, an active owner).
 
 ## Release switching
 
@@ -24,6 +25,18 @@ After migration, service startup and both HTTPS health checks succeed, the scrip
 Use a new tag for every code/environment change: an existing release volume is not repopulated. The script does not pull infrastructure Git changes; update this checkout separately when its configuration changes.
 
 ## Maintenance
+
+### Owner account
+
+After deployment and migrations, run as `legaldrop` from `/var/www/legal_drop`:
+
+```bash
+bash admin-owner.sh admin@legal-drop.space
+```
+
+For a new account, the command asks for first and last names; alternatively pass `--name="..." --last-name="..." --no-interaction`. For an existing owner, it generates a new password and invalidates previous sessions without changing the profile, role or active status. An email belonging to another staff role is rejected.
+
+The generated password appears in the terminal after the transaction commits; save it securely. Do not run this command in CI or redirect its output to logs. Passwords are never included in the administrative audit. This command is intentionally not part of automatic deployment, and runs only through the ready runtime against the API container's mounted release volume.
 
 Schedule `sudo bash /var/www/legal_drop/ssl_generator.sh` regularly for certificate renewal. The script itself does not install a schedule.
 
