@@ -1,0 +1,146 @@
+name: legal-drop
+
+x-app: &app
+  image: ghcr.io/webdeveloperzbk/legal-drop-prerelease:${APP_VERSION:?Set APP_VERSION to the built release tag}
+  restart: unless-stopped
+  stop_grace_period: 90s
+  volumes:
+    - app-release:/var/www/app
+
+services:
+  legal-drop-nginx:
+    image: ghcr.io/webdeveloperzbk/legal-drop-nginx-development:1.31.6-alpine3.24
+    container_name: legal-drop-nginx-development
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --no-check-certificate --header='Host: legal-drop.su' https://127.0.0.1/up && wget -q -O /dev/null --no-check-certificate --header='Host: admin.legal-drop.su' https://127.0.0.1/up"]
+      interval: 15s
+      timeout: 10s
+      start_period: 15s
+      retries: 5
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - type: bind
+        source: ./nginx/ssl
+        target: /etc/nginx/ssl
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nginx/logs
+        target: /var/log/nginx
+        bind:
+          create_host_path: false
+      # Only ACME HTTP-01 challenge files, not Laravel code or public assets.
+      - type: bind
+        source: ./nginx/acme
+        target: /var/www/acme
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      legal-drop-api:
+        condition: service_healthy
+      legal-drop-reverb:
+        condition: service_healthy
+    networks:
+      legal-drop:
+        aliases: [nginx.internal]
+
+  legal-drop-api:
+    <<: *app
+    container_name: legal-drop-development-api
+    environment:
+      START_QUEUE: "true"
+      START_CRON: "true"
+    depends_on:
+      legal-drop-postgres:
+        condition: service_healthy
+      legal-drop-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "rc-service laravel_queue status >/dev/null && pgrep -f '^/usr/sbin/crond -f' >/dev/null && php -r \"exit(@file_get_contents('http://127.0.0.1:9000/up') === false ? 1 : 0);\""]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    networks:
+      legal-drop:
+        aliases: [api.internal]
+
+  legal-drop-reverb:
+    <<: *app
+    container_name: legal-drop-development-reverb
+    environment:
+      START_ROADRUNNER: "false"
+      START_REVERB: "true"
+    depends_on:
+      legal-drop-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 8080) === false ? 1 : 0);"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    networks:
+      legal-drop:
+        aliases: [reverb.internal]
+
+  legal-drop-postgres:
+    image: postgres:18-alpine
+    container_name: legal-drop-development-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: legaldrop
+      POSTGRES_USER: legaldrop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in docker_development/.env}
+    volumes:
+      # PostgreSQL 18: PGDATA=/var/lib/postgresql/18/docker.
+      - type: bind
+        source: ./postgres
+        target: /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      legal-drop:
+        aliases: [pg.internal]
+
+  legal-drop-redis:
+    image: redis:8-alpine
+    container_name: legal-drop-development-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - type: bind
+        source: ./redis
+        target: /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      legal-drop:
+        aliases: [redis.internal]
+
+volumes:
+  app-release:
+    external: true
+    name: legal-drop-drive-${APP_VERSION:?Set APP_VERSION to the built release tag}
+
+networks:
+  legal-drop:
+    driver: bridge
+    name: legal-drop

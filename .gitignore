@@ -1,0 +1,7 @@
+.env
+/postgres
+/redis
+/.deploy.lock
+/.env.release.*
+/certbot/
+/nginx/acme/
