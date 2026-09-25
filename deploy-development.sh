@@ -33,7 +33,7 @@ trap 'exit 143' TERM
 
 exec 9>.deploy.lock
 flock -n 9 || { echo 'Another deployment is running.' >&2; exit 1; }
-[[ -f .env && -f check-release-env.php && -f check-release-services.php ]]
+[[ -f .env && -f check-release-env.php && -f check-release-services.php && -f check-staged-uploads.php ]]
 [[ -f nginx/ssl/ssl.crt && -f nginx/ssl/ssl.key && -d nginx/logs && -d nginx/acme ]]
 "${compose[@]}" config --quiet
 
@@ -52,8 +52,20 @@ docker run --rm --pull never --network none --entrypoint /bin/true \
     --volume "$stack_dir/check-release-services.php:/tmp/check-release-services.php:ro" \
     "$runtime_image" /tmp/check-release-services.php
 
+check_staging() {
+    "${runtime[@]}" --network legal-drop \
+        --volume "$stack_dir/check-staged-uploads.php:/tmp/check-staged-uploads.php:ro" \
+        "$runtime_image" /tmp/check-staged-uploads.php
+}
+check_staging
+
 # Old workers must stop before changing the schema; new workers start after migrations.
 "${compose[@]}" stop legal-drop-api legal-drop-reverb
+# Recheck after stopping writers to close the race with a last upload request.
+if ! check_staging; then
+    "${compose[@]}" start legal-drop-api legal-drop-reverb
+    exit 1
+fi
 "${runtime[@]}" --network legal-drop "$runtime_image" artisan migrate --force --no-interaction
 "${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 180 legal-drop-api legal-drop-reverb
 "${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 120 legal-drop-nginx
