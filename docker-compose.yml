@@ -18,7 +18,11 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null --no-check-certificate --header='Host: legal-drop.su' https://127.0.0.1/up && wget -q -O /dev/null --no-check-certificate --header='Host: admin.legal-drop.su' https://127.0.0.1/up"]
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: legal-drop.su' https://nginx.internal/up &&
+          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: admin.legal-drop.su' https://nginx.internal/up
       interval: 15s
       timeout: 10s
       start_period: 15s
@@ -49,8 +53,10 @@ services:
     depends_on:
       legal-drop-api:
         condition: service_healthy
+        restart: true
       legal-drop-reverb:
         condition: service_healthy
+        restart: true
     networks:
       legal-drop:
         aliases: [nginx.internal]
@@ -59,15 +65,32 @@ services:
     <<: *app
     container_name: legal-drop-development-api
     environment:
+      START_ROADRUNNER: "true"
+      START_REVERB: "false"
       START_QUEUE: "true"
       START_CRON: "true"
     depends_on:
       legal-drop-postgres:
         condition: service_healthy
+        restart: true
       legal-drop-redis:
         condition: service_healthy
+        restart: true
     healthcheck:
-      test: ["CMD-SHELL", "rc-service laravel_queue status >/dev/null && pgrep -f '^/usr/sbin/crond -f' >/dev/null && php -r \"exit(@file_get_contents('http://127.0.0.1:9000/up') === false ? 1 : 0);\""]
+      test:
+        - CMD-SHELL
+        - >-
+          rc-service laravel_queue status >/dev/null &&
+          pgrep -f '^/usr/sbin/crond -f' >/dev/null &&
+          php -d default_socket_timeout=2 -r '
+          try {
+            require "vendor/autoload.php";
+            $$app = require "bootstrap/app.php";
+            $$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            Illuminate\Support\Facades\DB::select("SELECT 1");
+            Illuminate\Support\Facades\Redis::connection()->ping();
+            exit(@file_get_contents("http://api.internal:9000/up") === false ? 1 : 0);
+          } catch (Throwable) { exit(1); }'
       interval: 15s
       timeout: 5s
       start_period: 30s
@@ -82,11 +105,23 @@ services:
     environment:
       START_ROADRUNNER: "false"
       START_REVERB: "true"
+      START_QUEUE: "false"
+      START_CRON: "false"
     depends_on:
       legal-drop-redis:
         condition: service_healthy
+        restart: true
     healthcheck:
-      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 8080) === false ? 1 : 0);"]
+      test:
+        - CMD
+        - php
+        - -r
+        - >-
+          foreach (["reverb.internal:8080", "redis.internal:6379"] as $$address) {
+            $$socket = @stream_socket_client("tcp://".$$address, $$errno, $$error, 2);
+            if ($$socket === false) { exit(1); }
+            fclose($$socket);
+          }
       interval: 15s
       timeout: 5s
       start_period: 15s
@@ -109,7 +144,8 @@ services:
         source: ./postgres
         target: /var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      # Check the Docker network alias, not only the local Unix socket.
+      test: ["CMD-SHELL", "pg_isready -h pg.internal -t 2 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -127,7 +163,7 @@ services:
         source: ./redis
         target: /data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -h redis.internal --raw ping | grep -qx PONG"]
       interval: 5s
       timeout: 3s
       retries: 20
