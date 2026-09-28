@@ -3,8 +3,8 @@
 set -Eeuo pipefail
 umask 077
 
-[[ $# == 1 && "$1" =~ ^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$ ]] || {
-    echo 'Expected one valid image tag.' >&2
+[[ $# == 1 && "$1" =~ ^DEV-[0-9]+\.[0-9]+\.[0-9]+$ && ${#1} -le 128 ]] || {
+    echo 'Expected one development tag: DEV-X.Y.Z.' >&2
     exit 1
 }
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
