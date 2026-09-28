@@ -68,7 +68,9 @@ if ! check_staging; then
 fi
 "${runtime[@]}" --network legal-drop "$runtime_image" artisan migrate --force --no-interaction
 "${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 180 legal-drop-api legal-drop-reverb
-"${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 120 legal-drop-nginx
+# Recreate Nginx after its upstreams: an old healthy result and cached Docker DNS
+# can otherwise allow the final HTTPS probe to race with the changed API address.
+"${compose[@]}" up -d --no-deps --no-build --pull never --force-recreate --wait --wait-timeout 120 legal-drop-nginx
 for domain in legal-drop.su admin.legal-drop.su; do
     curl --fail --silent --show-error --noproxy '*' --connect-timeout 5 --max-time 15 \
         --resolve "$domain:443:127.0.0.1" "https://$domain/up" >/dev/null
