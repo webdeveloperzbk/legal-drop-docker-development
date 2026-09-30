@@ -10,7 +10,8 @@ try {
     $app = require getcwd().'/bootstrap/app.php';
     $app->make(Kernel::class)->bootstrap();
     foreach (['order_images', 'order_message_images', 'order_purchase_receipts'] as $table) {
-        if (Schema::hasColumn($table, 'staged_path') && DB::table($table)->whereNotNull('staged_path')->exists()) {
+        if (Schema::hasColumn($table, 'staged_path') && DB::table($table)->whereNotNull('staged_path')
+            ->where('staged_path', 'not like', 'direct-uploads/%')->exists()) {
             throw new RuntimeException('Staged attachments must finish or be retried before deployment.');
         }
     }
