@@ -59,6 +59,19 @@ check_staging() {
 }
 check_staging
 
+# A reset requires a private, release-specific request installed by the operator.
+# Without it this deployment only runs ordinary incremental migrations.
+reset_directory="$stack_dir/.prelaunch-reset/$APP_VERSION"
+reset_database() {
+    "${runtime[@]}" --network legal-drop \
+        --volume "$stack_dir/prelaunch-reset.php:/tmp/prelaunch-reset.php:ro" \
+        --volume "$reset_directory:/reset" \
+        "$runtime_image" -d memory_limit=1G /tmp/prelaunch-reset.php "$1" development "$APP_VERSION" /reset
+}
+if [[ -f "$reset_directory/request.json" ]]; then
+    reset_database --plan
+fi
+
 # Old workers must stop before changing the schema; new workers start after migrations.
 "${compose[@]}" stop legal-drop-api legal-drop-reverb
 # Recheck after stopping writers to close the race with a last upload request.
@@ -66,7 +79,11 @@ if ! check_staging; then
     "${compose[@]}" start legal-drop-api legal-drop-reverb
     exit 1
 fi
-"${runtime[@]}" --network legal-drop "$runtime_image" artisan migrate --force --no-interaction
+if [[ -f "$reset_directory/request.json" ]]; then
+    reset_database --reset
+else
+    "${runtime[@]}" --network legal-drop "$runtime_image" artisan migrate --force --no-interaction
+fi
 "${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 180 legal-drop-api legal-drop-reverb
 # Recreate Nginx after its upstreams: an old healthy result and cached Docker DNS
 # can otherwise allow the final HTTPS probe to race with the changed API address.

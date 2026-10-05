@@ -5,3 +5,4 @@
 /.env.release.*
 /certbot/
 /nginx/acme/
+/.prelaunch-reset/
