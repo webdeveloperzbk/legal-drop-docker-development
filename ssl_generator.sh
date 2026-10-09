@@ -9,11 +9,11 @@ stack_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ssl_dir="$stack_dir/nginx/ssl"
 webroot="$stack_dir/nginx/acme"
 certbot_dir="$stack_dir/certbot"
-cert_name='legal-drop-development'
+cert_name='packway-development'
 certbot_image='certbot/certbot:v5.8.0'
-CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@legal-drop.space}"
-nginx_container='legal-drop-nginx-development'
-domains=(legal-drop.su admin.legal-drop.su)
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@packway.app}"
+nginx_container='packway-nginx-development'
+domains=(packway-dev.ru admin.packway-dev.ru)
 # Same threshold as the Cloudset reference: request renewal at <= 3 days remaining.
 renew_before_seconds=259200
 check_only=false
@@ -54,17 +54,17 @@ fi
 
 [[ "$EUID" == 0 ]] || fail 'Run issuance/renewal with sudo.'
 for command in docker flock curl ss install getent; do command -v "$command" >/dev/null || fail "Missing command: $command"; done
-[[ "$(id -u legaldrop)" == 2048 && "$(getent group legaldrop | cut -d: -f3)" == 2048 ]] \
-    || fail 'Expected legaldrop UID/GID 2048.'
+[[ "$(id -u packway)" == 2048 && "$(getent group packway | cut -d: -f3)" == 2048 ]] \
+    || fail 'Expected packway UID/GID 2048.'
 
 # Share the release lock: do not replace certificates while a deploy recreates Nginx.
 touch "$stack_dir/.deploy.lock"
-chown legaldrop:legaldrop "$stack_dir/.deploy.lock"
+chown packway:packway "$stack_dir/.deploy.lock"
 chmod 600 "$stack_dir/.deploy.lock"
 exec 9>"$stack_dir/.deploy.lock"
 flock -n 9 || fail 'Another deployment/certificate job is running.'
 
-install -d -o legaldrop -g legaldrop -m 0750 "$ssl_dir" "$stack_dir/nginx/logs"
+install -d -o packway -g packway -m 0750 "$ssl_dir" "$stack_dir/nginx/logs"
 install -d -m 0755 "$webroot" "$webroot/.well-known" "$webroot/.well-known/acme-challenge"
 install -d -m 0700 "$certbot_dir"
 
@@ -82,8 +82,8 @@ cleanup() {
     status=$?
     trap - EXIT
     if (( status != 0 )) && [[ "$installed" == true && "$had_pair" == true ]]; then
-        install -o legaldrop -g legaldrop -m 0640 "$stage/previous.key" "$ssl_dir/ssl.key"
-        install -o legaldrop -g legaldrop -m 0644 "$stage/previous.crt" "$ssl_dir/ssl.crt"
+        install -o packway -g packway -m 0640 "$stage/previous.key" "$ssl_dir/ssl.key"
+        install -o packway -g packway -m 0644 "$stage/previous.crt" "$ssl_dir/ssl.crt"
         log 'Previous certificate files restored; Nginx was not restarted.' >&2
     fi
     if [[ -n "$probe" ]]; then rm -f -- "$webroot/.well-known/acme-challenge/$probe"; fi
@@ -98,7 +98,7 @@ docker_args=(run --rm --init --volume "$certbot_dir:/etc/letsencrypt")
 if [[ "$nginx_running" == true ]]; then
     # Fail early if Nginx still has the old unconditional HTTP redirect or no ACME mount.
     docker exec "$nginx_container" nginx -t
-    probe="legal-drop-check-$(openssl rand -hex 16)"
+    probe="packway-check-$(openssl rand -hex 16)"
     printf '%s' "$probe" > "$webroot/.well-known/acme-challenge/$probe"
     chmod 0644 "$webroot/.well-known/acme-challenge/$probe"
     for domain in "${domains[@]}"; do
@@ -117,7 +117,7 @@ fi
 
 domain_args=()
 for domain in "${domains[@]}"; do domain_args+=(-d "$domain"); done
-log 'Requesting/reusing a certificate for legal-drop.su and admin.legal-drop.su.'
+log 'Requesting/reusing a certificate for packway-dev.ru and admin.packway-dev.ru.'
 docker "${docker_args[@]}" "$certbot_image" certonly \
     "${authenticator[@]}" --preferred-challenges http --key-type rsa \
     --cert-name "$cert_name" "${domain_args[@]}" \
@@ -137,8 +137,8 @@ if [[ -f "$ssl_dir/ssl.crt" && -f "$ssl_dir/ssl.key" ]]; then
     had_pair=true
 fi
 installed=true
-install -o legaldrop -g legaldrop -m 0640 "$stage/ssl.key" "$ssl_dir/ssl.key"
-install -o legaldrop -g legaldrop -m 0644 "$stage/ssl.crt" "$ssl_dir/ssl.crt"
+install -o packway -g packway -m 0640 "$stage/ssl.key" "$ssl_dir/ssl.key"
+install -o packway -g packway -m 0644 "$stage/ssl.crt" "$ssl_dir/ssl.crt"
 
 if [[ "$nginx_running" == true ]]; then
     docker exec "$nginx_container" nginx -t

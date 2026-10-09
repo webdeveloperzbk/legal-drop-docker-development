@@ -1,16 +1,16 @@
-name: legal-drop
+name: packway
 
 x-app: &app
-  image: ghcr.io/webdeveloperzbk/legal-drop-prerelease:${APP_VERSION:?Set APP_VERSION to the built release tag}
+  image: ghcr.io/webdeveloperzbk/packway-prerelease:${APP_VERSION:?Set APP_VERSION to the built release tag}
   restart: unless-stopped
   stop_grace_period: 90s
   volumes:
     - app-release:/var/www/app
 
 services:
-  legal-drop-nginx:
-    image: ghcr.io/webdeveloperzbk/legal-drop-nginx-development:1.31.6-alpine3.24
-    container_name: legal-drop-nginx-development
+  packway-nginx:
+    image: ghcr.io/webdeveloperzbk/packway-nginx-development:1.31.6-alpine3.24
+    container_name: packway-nginx-development
     restart: unless-stopped
     logging:
       driver: json-file
@@ -21,8 +21,8 @@ services:
       test:
         - CMD-SHELL
         - >-
-          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: legal-drop.su' https://nginx.internal/up &&
-          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: admin.legal-drop.su' https://nginx.internal/up
+          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: packway-dev.ru' https://nginx.internal/up &&
+          wget -q -T 3 -O /dev/null --no-check-certificate --header='Host: admin.packway-dev.ru' https://nginx.internal/up
       interval: 15s
       timeout: 10s
       start_period: 15s
@@ -51,29 +51,29 @@ services:
         bind:
           create_host_path: false
     depends_on:
-      legal-drop-api:
+      packway-api:
         condition: service_healthy
         restart: true
-      legal-drop-reverb:
+      packway-reverb:
         condition: service_healthy
         restart: true
     networks:
-      legal-drop:
+      packway:
         aliases: [nginx.internal]
 
-  legal-drop-api:
+  packway-api:
     <<: *app
-    container_name: legal-drop-development-api
+    container_name: packway-development-api
     environment:
       START_ROADRUNNER: "true"
       START_REVERB: "false"
       START_QUEUE: "true"
       START_CRON: "true"
     depends_on:
-      legal-drop-postgres:
+      packway-postgres:
         condition: service_healthy
         restart: true
-      legal-drop-redis:
+      packway-redis:
         condition: service_healthy
         restart: true
     healthcheck:
@@ -96,19 +96,19 @@ services:
       start_period: 30s
       retries: 5
     networks:
-      legal-drop:
+      packway:
         aliases: [api.internal]
 
-  legal-drop-reverb:
+  packway-reverb:
     <<: *app
-    container_name: legal-drop-development-reverb
+    container_name: packway-development-reverb
     environment:
       START_ROADRUNNER: "false"
       START_REVERB: "true"
       START_QUEUE: "false"
       START_CRON: "false"
     depends_on:
-      legal-drop-redis:
+      packway-redis:
         condition: service_healthy
         restart: true
     healthcheck:
@@ -127,16 +127,16 @@ services:
       start_period: 15s
       retries: 5
     networks:
-      legal-drop:
+      packway:
         aliases: [reverb.internal]
 
-  legal-drop-postgres:
+  packway-postgres:
     image: postgres:18-alpine
-    container_name: legal-drop-development-postgres
+    container_name: packway-development-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: legaldrop
-      POSTGRES_USER: legaldrop
+      POSTGRES_DB: packway
+      POSTGRES_USER: packway
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in docker_development/.env}
     volumes:
       # PostgreSQL 18: PGDATA=/var/lib/postgresql/18/docker.
@@ -150,12 +150,12 @@ services:
       timeout: 3s
       retries: 20
     networks:
-      legal-drop:
+      packway:
         aliases: [pg.internal]
 
-  legal-drop-redis:
+  packway-redis:
     image: redis:8-alpine
-    container_name: legal-drop-development-redis
+    container_name: packway-development-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     volumes:
@@ -168,15 +168,15 @@ services:
       timeout: 3s
       retries: 20
     networks:
-      legal-drop:
+      packway:
         aliases: [redis.internal]
 
 volumes:
   app-release:
     external: true
-    name: legal-drop-drive-${APP_VERSION:?Set APP_VERSION to the built release tag}
+    name: packway-drive-${APP_VERSION:?Set APP_VERSION to the built release tag}
 
 networks:
-  legal-drop:
+  packway:
     driver: bridge
-    name: legal-drop
+    name: packway

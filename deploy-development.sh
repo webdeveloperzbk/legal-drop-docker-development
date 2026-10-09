@@ -10,9 +10,9 @@ umask 077
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 stack_dir="$PWD"
 export APP_VERSION="$1"
-release_image="ghcr.io/webdeveloperzbk/legal-drop-prerelease:$APP_VERSION"
-release_volume="legal-drop-drive-$APP_VERSION"
-runtime_image='ghcr.io/webdeveloperzbk/legal-drop-runtime:php8.5.10-nodejs24.21.0'
+release_image="ghcr.io/webdeveloperzbk/packway-prerelease:$APP_VERSION"
+release_volume="packway-drive-$APP_VERSION"
+runtime_image='ghcr.io/webdeveloperzbk/packway-runtime:php8.5.10-nodejs24.21.0'
 compose=(docker compose --env-file "$stack_dir/.env" -f "$stack_dir/docker-compose.yml")
 runtime=(docker run --rm --pull never --init --user 2048:2048 --workdir /var/www/app
     --volume "$release_volume:/var/www/app" --entrypoint php)
@@ -47,13 +47,13 @@ docker run --rm --pull never --network none --entrypoint /bin/true \
 "${runtime[@]}" --network none \
     --volume "$stack_dir/check-release-env.php:/tmp/check-release-env.php:ro" \
     "$runtime_image" /tmp/check-release-env.php development
-"${compose[@]}" up -d --wait --wait-timeout 120 legal-drop-postgres legal-drop-redis
-"${runtime[@]}" --network legal-drop \
+"${compose[@]}" up -d --wait --wait-timeout 120 packway-postgres packway-redis
+"${runtime[@]}" --network packway \
     --volume "$stack_dir/check-release-services.php:/tmp/check-release-services.php:ro" \
     "$runtime_image" /tmp/check-release-services.php
 
 check_staging() {
-    "${runtime[@]}" --network legal-drop \
+    "${runtime[@]}" --network packway \
         --volume "$stack_dir/check-staged-uploads.php:/tmp/check-staged-uploads.php:ro" \
         "$runtime_image" /tmp/check-staged-uploads.php
 }
@@ -63,7 +63,7 @@ check_staging
 # Without it this deployment only runs ordinary incremental migrations.
 reset_directory="$stack_dir/.prelaunch-reset/$APP_VERSION"
 reset_database() {
-    "${runtime[@]}" --network legal-drop \
+    "${runtime[@]}" --network packway \
         --volume "$stack_dir/prelaunch-reset.php:/tmp/prelaunch-reset.php:ro" \
         --volume "$reset_directory:/reset" \
         "$runtime_image" -d memory_limit=1G /tmp/prelaunch-reset.php "$1" development "$APP_VERSION" /reset
@@ -73,22 +73,22 @@ if [[ -f "$reset_directory/request.json" ]]; then
 fi
 
 # Old workers must stop before changing the schema; new workers start after migrations.
-"${compose[@]}" stop legal-drop-api legal-drop-reverb
+"${compose[@]}" stop packway-api packway-reverb
 # Recheck after stopping writers to close the race with a last upload request.
 if ! check_staging; then
-    "${compose[@]}" start legal-drop-api legal-drop-reverb
+    "${compose[@]}" start packway-api packway-reverb
     exit 1
 fi
 if [[ -f "$reset_directory/request.json" ]]; then
     reset_database --reset
 else
-    "${runtime[@]}" --network legal-drop "$runtime_image" artisan migrate --force --no-interaction
+    "${runtime[@]}" --network packway "$runtime_image" artisan migrate --force --no-interaction
 fi
-"${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 180 legal-drop-api legal-drop-reverb
+"${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 180 packway-api packway-reverb
 # Recreate Nginx after its upstreams: an old healthy result and cached Docker DNS
 # can otherwise allow the final HTTPS probe to race with the changed API address.
-"${compose[@]}" up -d --no-deps --no-build --pull never --force-recreate --wait --wait-timeout 120 legal-drop-nginx
-for domain in legal-drop.su admin.legal-drop.su; do
+"${compose[@]}" up -d --no-deps --no-build --pull never --force-recreate --wait --wait-timeout 120 packway-nginx
+for domain in packway-dev.ru admin.packway-dev.ru; do
     curl --fail --silent --show-error --noproxy '*' --connect-timeout 5 --max-time 15 \
         --resolve "$domain:443:127.0.0.1" "https://$domain/up" >/dev/null
 done

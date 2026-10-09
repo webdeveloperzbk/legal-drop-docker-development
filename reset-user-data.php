@@ -16,7 +16,7 @@ $app->make(Kernel::class)->bootstrap();
 $phase = 'preflight';
 try {
     if (! $app->environment('development') || DB::getDriverName() !== 'pgsql'
-        || parse_url(config('app.url'), PHP_URL_HOST) !== 'legal-drop.su') {
+        || parse_url(config('app.url'), PHP_URL_HOST) !== 'packway-dev.ru') {
         throw new RuntimeException('Development PostgreSQL and development domain required.');
     }
     $mode = $argv[1] ?? '--plan';

@@ -26,7 +26,7 @@ try {
     ensure(in_array($mode, ['--plan', '--reset'], true), 'Unknown reset mode.');
     ensure(in_array($environment, ['development', 'production'], true) && app()->environment($environment), 'Environment mismatch.');
     ensure(DB::getDriverName() === 'pgsql', 'Reset requires PostgreSQL.');
-    $domain = $environment === 'development' ? 'legal-drop.su' : 'legal-drop.space';
+    $domain = $environment === 'development' ? 'packway-dev.ru' : 'packway.app';
     ensure(parse_url(config('app.url'), PHP_URL_HOST) === $domain, 'Application domain mismatch.');
     $request = json_decode(file_get_contents($directory.'/request.json'), true, flags: JSON_THROW_ON_ERROR);
     ensure(($request['environment'] ?? null) === $environment && ($request['tag'] ?? null) === $tag, 'Reset request does not match release.');
